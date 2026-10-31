@@ -1,0 +1,31 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+
+# SPM
+.build/
+.swiftpm/
+
+# Firebase
+GoogleService-Info.plist
+
+# macOS
+.DS_Store
+
+# fastlane
+fastlane/AuthKey_*.p8
+fastlane/report.xml
+fastlane/test_output/
+fastlane/builds/
+*.ipa
+*.dSYM.zip
+
+fastlane/shipped-version.txt

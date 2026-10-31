@@ -1,0 +1,14 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only the anonymous account on your phone. Anyone can mint an anonymous
+    // session with the app's (non-secret) API key, so `request.auth != null`
+    // isn't enough. The health_os pipeline uses a service account, which
+    // bypasses these rules. Reinstalling the app creates a new UID: update it here.
+    match /{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == "<YOUR_DEVICE_UID>";
+    }
+  }
+}

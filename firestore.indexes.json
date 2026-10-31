@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "workouts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dayType", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

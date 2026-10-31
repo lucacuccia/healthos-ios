@@ -1,0 +1,104 @@
+default_platform(:ios)
+
+# Every CI run starts on a fresh Mac with no Apple Development certificate in
+# its keychain, so `-allowProvisioningUpdates` creates a new one through the
+# API key to sign the archive. Those piled up as "Created via API" until the
+# account hit Apple's certificate limit and signing failed outright. Revoke
+# them before the build (so a run never trips on ones earlier runs left) and
+# after it (so at most one is ever outstanding). Only development certs with
+# that exact name are touched: the Mac's own dev cert and the cloud-managed
+# distribution cert are never matched.
+def revoke_ci_development_certs
+  certs = Spaceship::ConnectAPI::Certificate.all(
+    filter: { certificateType: "DEVELOPMENT,IOS_DEVELOPMENT" }
+  ).select { |cert| cert.display_name == "Created via API" }
+
+  certs.each do |cert|
+    UI.message("Revoking CI development certificate #{cert.id} (expires #{cert.expiration_date})")
+    cert.delete!
+  end
+  UI.message("No CI development certificates to revoke") if certs.empty?
+rescue => e
+  # Housekeeping only: never fail a build over it, and never mask the real
+  # error when this runs in the `ensure` after a failed build.
+  UI.important("Couldn't revoke CI development certificates: #{e.message}")
+end
+
+platform :ios do
+  desc "Build and upload a new TestFlight build"
+  lane :beta do
+    key_id = ENV.fetch("ASC_KEY_ID")
+    issuer_id = ENV.fetch("ASC_ISSUER_ID")
+    key_filepath = File.expand_path("AuthKey_#{key_id}.p8", __dir__)
+
+    api_key = app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_filepath: key_filepath
+    )
+
+    # Lets xcodebuild auto-create missing Distribution certs/profiles via the
+    # App Store Connect API instead of requiring an interactive Xcode login.
+    auth_xcargs = "-allowProvisioningUpdates -authenticationKeyPath \"#{key_filepath}\" -authenticationKeyID #{key_id} -authenticationKeyIssuerID #{issuer_id}"
+
+    # Date-based versioning. App Store Connect only accepts dot-separated
+    # integers for the marketing version, so today's date ships as "2026.8.9"
+    # and the app renders it as "2026-08-09". The build number is the same-day
+    # revision: it resets to 1 when the date rolls over, so the second build of
+    # a day displays as "2026-08-09.2".
+    #
+    # TestFlight itself is the source of truth for the build number, not a
+    # value tracked in project.yml. That keeps this lane stateless, so it gives
+    # the same answer whether it runs here or on a CI runner with a fresh
+    # checkout, and nothing has to be committed back after a build.
+    today = Time.now.strftime("%Y.%-m.%-d")
+    next_build = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "com.lucacuccia.healthos-app",
+      version: today,
+      initial_build_number: 0
+    ).to_i + 1
+    UI.message("Shipping #{today} (#{next_build})")
+
+    # project.yml is only the input to xcodegen, so stamp it, generate, then put
+    # it straight back — the version lives in the generated .xcodeproj that
+    # build_app reads, and the working tree stays clean.
+    project_yml = File.expand_path("../project.yml", __dir__)
+    original = File.read(project_yml)
+    stamped = original
+      .gsub(/MARKETING_VERSION:\s*"[^"]*"/, "MARKETING_VERSION: \"#{today}\"")
+      .gsub(/CURRENT_PROJECT_VERSION:\s*\d+/, "CURRENT_PROJECT_VERSION: #{next_build}")
+
+    begin
+      File.write(project_yml, stamped)
+      Dir.chdir("..") { sh("xcodegen generate") }
+    ensure
+      File.write(project_yml, original)
+    end
+
+    revoke_ci_development_certs
+
+    begin
+      build_app(
+        project: File.expand_path("../HealthOSApp.xcodeproj", __dir__),
+        scheme: "HealthOSApp",
+        export_method: "app-store",
+        clean: true,
+        xcargs: auth_xcargs,
+        output_directory: File.expand_path("builds", __dir__)
+      )
+
+      upload_to_testflight(
+        api_key: api_key,
+        skip_waiting_for_build_processing: true
+      )
+    ensure
+      revoke_ci_development_certs
+    end
+
+    # Leave the shipped version behind so callers (the CI tagging step) don't
+    # have to re-derive it or scrape it back out of the build artifacts.
+    File.write(File.expand_path("shipped-version.txt", __dir__), "#{today} #{next_build}\n")
+    UI.success("Shipped #{today} (#{next_build})")
+  end
+end
