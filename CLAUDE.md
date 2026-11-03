@@ -21,7 +21,7 @@ Personal iOS app for logging weightlifting workouts, cardio, wellness activities
 
 ## Tech Stack
 - SwiftUI (iOS 17+), Swift 5.9
-- Firebase iOS SDK 11+ (Firestore + Anonymous Auth)
+- Firebase iOS SDK 13.1.1+ (Firestore + Anonymous Auth). Never pin below 13.1.1: earlier builds embed trust in the compromised eMudhra intermediate CAs (Firebase security notice, Nov 2026)
 - ActivityKit / WidgetKit for the rest timer Live Activity
 - XcodeGen for project generation (`.xcodeproj` is gitignored; `project.yml` is the source of truth)
 

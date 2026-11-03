@@ -8,7 +8,7 @@ options:
 packages:
   firebase-ios-sdk:
     url: https://github.com/firebase/firebase-ios-sdk.git
-    from: "11.0.0"
+    from: "13.1.1" # 13.1.1 drops the compromised eMudhra CA roots; do not go lower
 
 targets:
   HealthOSApp:
